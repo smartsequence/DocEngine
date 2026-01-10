@@ -225,11 +225,11 @@
                     </div>
                 </section>
 
-                <!-- Personalized Advice Section (獨立區塊) -->
+                <!-- Risk Improvement Advice Section (獨立區塊) -->
                 <section class="report-advice-section" data-section="advice">
                     <div class="report-card advice-card" data-block="advice">
                         <div class="section-header">
-                            <h2 class="section-title" data-i18n="Report.PersonalizedAdvice">個人化建議</h2>
+                            <h2 class="section-title" data-i18n="Report.ImprovementAdvice">風險改善建議</h2>
                         </div>
                         <div class="advice-block">
                             <p class="advice-text" id="adviceText" data-i18n="Report.DefaultAdvice">
@@ -243,8 +243,8 @@
                 <section class="report-open-questions" id="openQuestionsSection" style="display: none;" data-section="open-questions">
                     <div class="report-card" data-block="open-questions">
                         <div class="section-header">
-                            <h2 class="section-title" data-i18n="Report.OpenQuestions">開放式問題回覆</h2>
-                            <p class="section-description" data-i18n="Report.OpenQuestionsDesc">您的詳細回饋與補充資訊</p>
+                            <h2 class="section-title" data-i18n="Report.OpenQuestions">補充說明</h2>
+                            <p class="section-description" data-i18n="Report.OpenQuestionsDesc">您的詳細說明與補充資訊</p>
                         </div>
                         <div class="open-questions-content">
                             <div class="open-question-item" id="openQ1" style="display: none;">
@@ -260,7 +260,23 @@
                                 <p class="open-question-answer" id="answer-open3"></p>
                             </div>
                             <div class="no-open-answers" id="noOpenAnswers" style="display: none;">
-                                <p data-i18n="Report.NoOpenAnswers">未填寫開放式問題</p>
+                                <p data-i18n="Report.NoOpenAnswers">未填寫補充說明</p>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- AI Insights Section -->
+                <section class="report-ai-insights" id="aiInsightsSection" style="display: none;" data-section="ai-insights">
+                    <div class="report-card" data-block="ai-insights">
+                        <div class="section-header">
+                            <h2 class="section-title" data-i18n="Report.AIInsights">風險洞察</h2>
+                            <p class="section-description" data-i18n="Report.AIInsightsDesc">針對 M6、M7、M8 補充說明的深度分析</p>
+                        </div>
+                        <div class="ai-section" id="ai-insights">
+                            <div id="insights-loading" data-i18n="Report.Analyzing">分析中...</div>
+                            <div class="ai-refresh-hint" id="aiRefreshHint" style="display: none; margin-top: 12px; padding: 8px 12px; background: rgba(98, 0, 234, 0.1); border-left: 3px solid #6200ea; border-radius: 4px; font-size: 12px; color: #b0b0b0; line-height: 1.5;">
+                                <span data-i18n="Report.AIRefreshHint">💡 提示：可以重新整理頁面（F5）獲取不同版本的 AI 建議</span>
                             </div>
                         </div>
                     </div>
@@ -330,15 +346,33 @@
             }
         });
 
-        function parseSurveyData() {
-            // 先嘗試從 survey_data 讀取
+        // 從服務端 Session 或 localStorage 讀取問卷數據（優先使用 Session）
+        async function parseSurveyData() {
+            // 優先嘗試從服務端 Session 讀取（更安全）
+            try {
+                const response = await fetch('/Home/GetSurveyData');
+                if (response.ok) {
+                    const result = await response.json();
+                    if (result.success && result.data) {
+                        console.log('✓ 從服務端 Session 讀取到數據:', result.data);
+                        // 同時保存時間戳到變數中
+                        if (result.timestamp) {
+                            window.surveyTimestamp = result.timestamp;
+                        }
+                        return result.data;
+                    }
+                }
+            } catch (error) {
+                console.warn('無法從服務端 Session 讀取數據，嘗試使用 localStorage:', error);
+            }
+            
+            // 如果 Session 沒有數據，嘗試從 localStorage 讀取（向後兼容）
             const raw = localStorage.getItem('survey_data');
             if (raw) {
                 try {
                     const data = JSON.parse(raw);
-                    // 如果數據存在且有內容，返回它
                     if (data && Object.keys(data).length > 0) {
-                        console.log('✓ 從 survey_data 讀取到數據:', data);
+                        console.log('✓ 從 localStorage survey_data 讀取到數據:', data);
                         return data;
                     }
                 } catch (e) {
@@ -356,19 +390,12 @@
                 }
             });
             
-            // 如果至少有一個值，返回數據
             if (Object.keys(data).length > 0) {
-                console.log('✓ 從個別項目讀取到數據:', data);
+                console.log('✓ 從個別 localStorage 項目讀取到數據:', data);
                 return data;
             }
             
             console.warn('⚠ 未找到任何問卷數據');
-            const allSurveyKeys = Object.keys(localStorage).filter(k => k.startsWith('survey_'));
-            console.log('localStorage 中的所有 survey_ 項目:', allSurveyKeys);
-            if (allSurveyKeys.length > 0) {
-                console.log('這些項目的值:', allSurveyKeys.map(k => ({ key: k, value: localStorage.getItem(k) })));
-            }
-            
             return null;
         }
 
@@ -384,9 +411,40 @@
             return '高';
         }
         
-        // 監聽語言變更事件，更新報告
-        window.addEventListener('languageChanged', function() {
-            updateReport();
+        // 監聽語言變更事件，更新報告和 AI 內容
+        window.addEventListener('languageChanged', async function() {
+            // 在 updateReport() 之前，先保護已生成的內容
+            // updateReport() 會調用 updatePage()，可能覆蓋已生成的內容
+            const adviceEl = document.getElementById('adviceText');
+            const hadGeneratedContent = adviceEl && !adviceEl.hasAttribute('data-i18n');
+            
+            await updateReport();
+            
+            // 重新獲取 AI 建議（使用新語言）
+            const surveyData = await parseSurveyData();
+            if (surveyData) {
+                const toNumber = (value) => {
+                    const n = Number(value);
+                    return Number.isFinite(n) ? n : 0;
+                };
+                const m1 = toNumber((surveyData && (surveyData.M1 || surveyData.m1)) || localStorage.getItem('survey_M1') || 0);
+                const m2 = toNumber((surveyData && (surveyData.M2 || surveyData.m2)) || localStorage.getItem('survey_M2') || 0);
+                const m3 = toNumber((surveyData && (surveyData.M3 || surveyData.m3)) || localStorage.getItem('survey_M3') || 0);
+                const m4 = toNumber((surveyData && (surveyData.M4 || surveyData.m4)) || localStorage.getItem('survey_M4') || 0);
+                const m5 = toNumber((surveyData && (surveyData.M5 || surveyData.m5)) || localStorage.getItem('survey_M5') || 0);
+                
+                // 重新生成風險改善建議和 AI 洞察（使用新語言）
+                generatePersonalizedAdvice(m1, m2, m3, m4, m5);
+                // 確保 AI 區塊在語言切換後正確顯示
+                const aiSection = document.getElementById('aiInsightsSection');
+                const hasOpenAnswers = (surveyData.open1 && surveyData.open1.trim()) || 
+                                      (surveyData.open2 && surveyData.open2.trim()) || 
+                                      (surveyData.open3 && surveyData.open3.trim());
+                if (hasOpenAnswers && aiSection) {
+                    aiSection.style.display = 'block';
+                }
+                await getAIInsights();
+            }
         });
 
         function updateRadarChart(m1, m2, m3, m4, m5) {
@@ -426,8 +484,9 @@
             return `${year}/${month}/${day} ${hours}:${minutes}:${seconds}`;
         }
 
-        function updateReport() {
-            const data = parseSurveyData();
+        async function updateReport() {
+            try {
+                const data = await parseSurveyData();
             
             // 更新系統名稱
             const systemNameEl = document.getElementById('systemNameDisplay');
@@ -446,7 +505,8 @@
             // 更新評估日期（無論是否有數據都顯示）
             const assessmentDateEl = document.getElementById('assessmentDate');
             if (assessmentDateEl) {
-                const ts = localStorage.getItem('survey_timestamp');
+                // 優先使用從 Session 讀取的時間戳
+                const ts = window.surveyTimestamp || localStorage.getItem('survey_timestamp');
                 assessmentDateEl.textContent = formatTimestamp(ts) || '-';
             }
             
@@ -522,7 +582,7 @@
                 else levelEl.classList.add('high');
             }
 
-            const ts = localStorage.getItem('survey_timestamp');
+            const ts = window.surveyTimestamp || localStorage.getItem('survey_timestamp');
             const surveyTimeEl = document.getElementById('surveyTime');
             if (surveyTimeEl) {
                 surveyTimeEl.textContent = formatTimestamp(ts);
@@ -533,13 +593,16 @@
                 assessmentDateEl.textContent = formatTimestamp(ts);
             }
 
+            // 風險改善建議改為 AI 生成
             const adviceEl = document.getElementById('adviceText');
             if (adviceEl) {
-                if (m3 <= 6) {
-                    adviceEl.textContent = i18n.t('Report.AdviceLow');
-                } else {
-                    adviceEl.textContent = i18n.t('Report.AdviceNormal');
+                // 只有在沒有已生成的內容時才設置預設值
+                // 如果元素沒有 data-i18n 屬性，說明已經有生成的內容，不要覆蓋
+                if (adviceEl.hasAttribute('data-i18n')) {
+                    adviceEl.textContent = i18n.t('Report.DefaultAdvice');
                 }
+                // 異步獲取 AI 建議（會更新內容並移除 data-i18n 屬性）
+                generatePersonalizedAdvice(m1, m2, m3, m4, m5);
             }
 
             updateRadarChart(m1, m2, m3, m4, m5);
@@ -547,8 +610,23 @@
             // 更新分數說明表
             updateScoreDescriptionTable(m1, m2, m3, m4, m5);
 
-            // Update open questions
+            // Update open questions (補充說明)
             updateOpenQuestions(data);
+            
+            // 如果有補充說明，觸發 AI 分析（注意：不要在 updateReport 中調用，避免重複）
+            // getAIInsights() 會在頁面初始化時單獨調用
+            } catch (error) {
+                console.error('updateReport 錯誤:', error);
+                // 發生錯誤時，至少顯示引導頁面
+                const reportContent = document.getElementById('reportContent');
+                const noReportGuide = document.getElementById('noReportGuide');
+                if (reportContent) {
+                    reportContent.style.display = 'none';
+                }
+                if (noReportGuide) {
+                    noReportGuide.style.display = 'flex';
+                }
+            }
         }
 
         function updateScoreDescriptionTable(m1, m2, m3, m4, m5) {
@@ -644,6 +722,230 @@
                     if (noOpenAnswers) noOpenAnswers.style.display = 'none';
                 } else {
                     openQuestionsSection.style.display = 'none';
+                }
+            }
+        }
+
+        // AI Insights 函數
+        async function getAIInsights() {
+            try {
+                const aiSection = document.getElementById('aiInsightsSection');
+                const insightsLoading = document.getElementById('insights-loading');
+                
+                if (!aiSection || !insightsLoading) {
+                    console.warn('AI 區塊元素未找到');
+                    return;
+                }
+                
+                // 從現有數據源讀取補充說明（open1, open2, open3 對應 m6, m7, m8）
+                const surveyData = await parseSurveyData();
+                
+                // 提取補充說明
+                const m6 = (surveyData && surveyData.open1) || localStorage.getItem('survey_open1') || '';
+                const m7 = (surveyData && surveyData.open2) || localStorage.getItem('survey_open2') || '';
+                const m8 = (surveyData && surveyData.open3) || localStorage.getItem('survey_open3') || '';
+                
+                // 檢查是否有任何補充說明
+                const hasOpenAnswers = (m6 && m6.trim()) || (m7 && m7.trim()) || (m8 && m8.trim());
+                
+                if (!hasOpenAnswers) {
+                    console.log('未找到補充說明，隱藏 AI 區塊');
+                    aiSection.style.display = 'none';
+                    return;
+                }
+                
+                // 提取 M1-M5 分數作為上下文
+                const toNumber = (value) => {
+                    const n = Number(value);
+                    return Number.isFinite(n) ? n : 0;
+                };
+                
+                const m1 = toNumber((surveyData && (surveyData.M1 || surveyData.m1)) || localStorage.getItem('survey_M1') || 0);
+                const m2 = toNumber((surveyData && (surveyData.M2 || surveyData.m2)) || localStorage.getItem('survey_M2') || 0);
+                const m3 = toNumber((surveyData && (surveyData.M3 || surveyData.m3)) || localStorage.getItem('survey_M3') || 0);
+                const m4 = toNumber((surveyData && (surveyData.M4 || surveyData.m4)) || localStorage.getItem('survey_M4') || 0);
+                const m5 = toNumber((surveyData && (surveyData.M5 || surveyData.m5)) || localStorage.getItem('survey_M5') || 0);
+                
+                // 顯示區塊並開始載入
+                console.log('找到補充說明，開始 AI 分析...', { m1, m2, m3, m4, m5, m6, m7, m8 });
+                aiSection.style.display = 'block';
+                const currentLang = i18n.currentLang || 'zh-TW';
+                insightsLoading.textContent = currentLang === 'zh-TW' ? '分析中...' : 'Analyzing...';
+                
+                // 構建請求數據（包含 M1-M5 分數和 M6-M8 補充說明）
+                const m678Data = {
+                    lang: currentLang,
+                    m1: String(m1),
+                    m2: String(m2),
+                    m3: String(m3),
+                    m4: String(m4),
+                    m5: String(m5),
+                    m6: m6 || '',
+                    m7: m7 || '',
+                    m8: m8 || ''
+                };
+                
+                console.log('發送 AI 請求數據:', m678Data);
+                
+                // 創建 AbortController 用於超時控制
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => controller.abort(), 65000); // 65 秒超時（比後端的 60 秒長一點）
+                
+                try {
+                    const response = await fetch('/Home/GenerateInsights', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(m678Data),
+                        signal: controller.signal
+                    });
+                    
+                    clearTimeout(timeoutId);
+                    
+                    if (!response.ok) {
+                        const errorText = await response.text();
+                        console.error('AI API 響應錯誤:', response.status, errorText);
+                        throw new Error(`無法獲取 AI 洞察 (${response.status}): ${errorText.substring(0, 200)}`);
+                    }
+                    
+                    const data = await response.json();
+                    console.log('AI 分析結果:', data);
+                    console.log('AI 洞察內容:', data.insights);
+                    
+                    // 使用 requestAnimationFrame 確保 DOM 已更新
+                    await new Promise(resolve => requestAnimationFrame(resolve));
+                    
+                    // 確保 insightsLoading 元素仍然存在（可能在動態更新過程中）
+                    let currentInsightsLoading = document.getElementById('insights-loading');
+                    
+                    // 如果找不到元素，嘗試從 aiSection 中查找
+                    if (!currentInsightsLoading) {
+                        console.warn('insights-loading 元素不存在，嘗試重新查找');
+                        const aiSection = document.getElementById('aiInsightsSection');
+                        if (aiSection) {
+                            currentInsightsLoading = aiSection.querySelector('#insights-loading');
+                        }
+                    }
+                    
+                    if (!currentInsightsLoading) {
+                        console.error('無法找到 insights-loading 元素，無法更新');
+                        return;
+                    }
+                    
+                    if (data.insights && data.insights.trim()) {
+                        // 顯示 AI 洞察內容，保留換行和格式
+                        console.log('更新 AI 洞察內容到元素');
+                        
+                        // 移除 data-i18n 屬性，避免 i18n.updatePage() 覆蓋內容
+                        currentInsightsLoading.removeAttribute('data-i18n');
+                        
+                        // 更新內容
+                        currentInsightsLoading.innerHTML = data.insights.replace(/\n/g, '<br>');
+                        
+                        // 強制觸發重排，確保內容顯示
+                        currentInsightsLoading.offsetHeight;
+                        
+                        // 顯示後，顯示刷新提示（如果存在）
+                        const refreshHint = document.getElementById('aiRefreshHint');
+                        if (refreshHint) {
+                            refreshHint.style.display = 'block';
+                            // 確保提示文字也更新語言（但不會影響已更新的 AI 內容）
+                            i18n.updatePage();
+                        }
+                        
+                        console.log('✓ AI 洞察內容已成功更新');
+                    } else {
+                        console.warn('AI 洞察內容為空');
+                        const currentLang = i18n.currentLang || 'zh-TW';
+                        // 移除 data-i18n 屬性，避免被覆蓋
+                        currentInsightsLoading.removeAttribute('data-i18n');
+                        currentInsightsLoading.textContent = currentLang === 'zh-TW' 
+                            ? '暫時無法生成 AI 洞察' 
+                            : 'Unable to generate AI insights';
+                    }
+                } catch (fetchError) {
+                    clearTimeout(timeoutId);
+                    if (fetchError.name === 'AbortError') {
+                        throw new Error('請求超時，請稍後再試');
+                    }
+                    throw fetchError;
+                }
+            } catch (error) {
+                console.error('AI 洞察載入錯誤:', error);
+                const insightsLoading = document.getElementById('insights-loading');
+                const currentLang = i18n.currentLang || 'zh-TW';
+                if (insightsLoading) {
+                    // 移除 data-i18n 屬性，避免被覆蓋
+                    insightsLoading.removeAttribute('data-i18n');
+                    let errorMsg;
+                    if (error.message.includes('超時') || error.message.includes('timeout')) {
+                        errorMsg = currentLang === 'zh-TW'
+                            ? 'AI 分析請求超時，請重新整理頁面後再試'
+                            : 'AI analysis request timed out, please refresh and try again';
+                    } else {
+                        errorMsg = currentLang === 'zh-TW'
+                            ? `AI 洞察載入失敗：${error.message}`
+                            : `Failed to load AI insights: ${error.message}`;
+                    }
+                    insightsLoading.innerHTML = `<span style="color: #ff6b6b;">${errorMsg}</span>`;
+                }
+                // 即使出錯也顯示區塊，讓用戶知道有問題
+                const aiSection = document.getElementById('aiInsightsSection');
+                if (aiSection) {
+                    aiSection.style.display = 'block';
+                }
+            }
+        }
+
+        // 風險改善建議 AI 生成函數
+        async function generatePersonalizedAdvice(m1, m2, m3, m4, m5) {
+            try {
+                const adviceEl = document.getElementById('adviceText');
+                if (!adviceEl) return;
+
+                const currentLang = i18n.currentLang || 'zh-TW';
+                adviceEl.textContent = currentLang === 'zh-TW' ? '生成中...' : 'Generating...';
+
+                const adviceData = {
+                    lang: currentLang,
+                    m1: String(m1),
+                    m2: String(m2),
+                    m3: String(m3),
+                    m4: String(m4),
+                    m5: String(m5)
+                };
+
+                const response = await fetch('/Home/GeneratePersonalizedAdvice', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(adviceData)
+                });
+
+                if (!response.ok) {
+                    throw new Error(`無法獲取風險改善建議 (${response.status})`);
+                }
+
+                const data = await response.json();
+                if (data.advice) {
+                    // 移除 data-i18n 屬性，避免 i18n.updatePage() 覆蓋內容
+                    adviceEl.removeAttribute('data-i18n');
+                    adviceEl.textContent = data.advice;
+                } else {
+                    // 移除 data-i18n 屬性，避免被覆蓋
+                    adviceEl.removeAttribute('data-i18n');
+                    adviceEl.textContent = currentLang === 'zh-TW'
+                        ? '暫時無法生成風險改善建議'
+                        : 'Unable to generate risk improvement recommendations';
+                }
+            } catch (error) {
+                console.error('風險改善建議載入錯誤:', error);
+                const adviceEl = document.getElementById('adviceText');
+                const currentLang = i18n.currentLang || 'zh-TW';
+                if (adviceEl) {
+                    // 移除 data-i18n 屬性，避免被覆蓋
+                    adviceEl.removeAttribute('data-i18n');
+                    adviceEl.textContent = currentLang === 'zh-TW'
+                        ? '風險改善建議載入失敗，請稍後再試'
+                        : 'Failed to load risk improvement recommendations, please try again later';
                 }
             }
         }
@@ -824,12 +1126,12 @@
         }
 
         // 創建 PDF 專用的內容結構
-        function createPdfContent() {
-            const data = parseSurveyData();
+        async function createPdfContent() {
+            const data = await parseSurveyData();
             if (!data) return null;
 
-            const systemName = localStorage.getItem('survey_systemName') || '-';
-            const timestamp = localStorage.getItem('survey_timestamp');
+            const systemName = (data && data.systemName) || localStorage.getItem('survey_systemName') || '-';
+            const timestamp = window.surveyTimestamp || localStorage.getItem('survey_timestamp');
             const m1 = toNumber(data.M1 || 0);
             const m2 = toNumber(data.M2 || 0);
             const m3 = toNumber(data.M3 || 0);
@@ -847,12 +1149,38 @@
             };
             const riskLevelText = levelMap[currentLang]?.[level] || level;
             
-            // 建議文字
+            // 獲取 AI 生成的風險改善建議
             let adviceText = i18n.t('Report.DefaultAdvice');
-            if (m3 <= 6) {
-                adviceText = i18n.t('Report.AdviceLow');
-            } else {
-                adviceText = i18n.t('Report.AdviceNormal');
+            try {
+                const adviceData = {
+                    lang: currentLang,
+                    m1: String(m1),
+                    m2: String(m2),
+                    m3: String(m3),
+                    m4: String(m4),
+                    m5: String(m5)
+                };
+                
+                const adviceResponse = await fetch('/Home/GeneratePersonalizedAdvice', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(adviceData)
+                });
+                
+                if (adviceResponse.ok) {
+                    const adviceResult = await adviceResponse.json();
+                    if (adviceResult.advice) {
+                        adviceText = adviceResult.advice;
+                    }
+                }
+            } catch (error) {
+                console.error('PDF 風險改善建議載入失敗:', error);
+                // 如果失敗，使用預設建議
+                if (m3 <= 6) {
+                    adviceText = i18n.t('Report.AdviceLow');
+                } else {
+                    adviceText = i18n.t('Report.AdviceNormal');
+                }
             }
 
             // 創建 PDF 專用容器（使用 A4 尺寸優化）
@@ -958,13 +1286,13 @@
                     </div>
                 </div>
 
-                <!-- 個人化建議區塊 -->
+                <!-- 風險改善建議區塊 -->
                 <div class="pdf-block" data-block="advice" style="margin-bottom: 16px; padding: 14px; background: #f8f8f8; border-radius: 6px; page-break-inside: avoid;">
-                    <h3 style="margin: 0 0 8px 0; font-size: 15px; color: #333; font-weight: 600;">${i18n.t('Report.PersonalizedAdvice')}</h3>
+                    <h3 style="margin: 0 0 8px 0; font-size: 15px; color: #333; font-weight: 600;">${i18n.t('Report.ImprovementAdvice')}</h3>
                     <p style="margin: 0; font-size: 12px; line-height: 1.5; color: #444;">${adviceText}</p>
                 </div>
 
-                <!-- 開放式問題區塊 -->
+                <!-- 補充說明區塊（調整順序，放在風險洞察之前） -->
                 ${data.open1 || data.open2 || data.open3 ? `
                 <div class="pdf-block" data-block="open-questions" style="margin-bottom: 16px; padding: 14px; background: #f8f8f8; border-radius: 6px; page-break-inside: avoid;">
                     <h3 style="margin: 0 0 8px 0; font-size: 15px; color: #333; font-weight: 600;">${i18n.t('Report.OpenQuestions')}</h3>
@@ -981,6 +1309,17 @@
                         <h4 style="margin: 0 0 6px 0; font-size: 12px; font-weight: 600; color: #333;">${i18n.t('Assessment.OpenQ8')}</h4>
                         <p style="margin: 0; font-size: 11px; line-height: 1.4; color: #555; white-space: pre-wrap;">${data.open3}</p>
                     </div>` : ''}
+                </div>
+                ` : ''}
+
+                <!-- 風險洞察區塊（調整順序，放在補充說明之後） -->
+                ${(data.open1 || data.open2 || data.open3) ? `
+                <div class="pdf-block" data-block="ai-insights" style="margin-bottom: 16px; padding: 14px; background: #f8f8f8; border-radius: 6px; page-break-inside: avoid;">
+                    <h3 style="margin: 0 0 8px 0; font-size: 15px; color: #333; font-weight: 600;">${i18n.t('Report.AIInsights')}</h3>
+                    <p style="margin: 0 0 12px 0; font-size: 10px; color: #666;">${i18n.t('Report.AIInsightsDesc')}</p>
+                    <div id="pdf-ai-insights" style="padding: 10px; background: white; border-radius: 4px; font-size: 11px; line-height: 1.5; color: #555;">
+                        <!-- AI 洞察內容將在這裡動態插入 -->
+                    </div>
                 </div>
                 ` : ''}
             `;
@@ -1001,6 +1340,79 @@
                     return `${x},${y}`;
                 });
                 pdfRadarPolygon.setAttribute('points', points.join(' '));
+            }
+
+            // 獲取並填充 AI 洞察內容（如果有補充說明）
+            // 優先使用頁面上已顯示的 AI 洞察內容，確保 PDF 和頁面一致
+            const pdfAiInsights = pdfContainer.querySelector('#pdf-ai-insights');
+            if (pdfAiInsights && (data.open1 || data.open2 || data.open3)) {
+                try {
+                    // 先檢查頁面上是否已有 AI 洞察內容
+                    const pageInsightsEl = document.getElementById('insights-loading');
+                    let aiContent = null;
+                    
+                    if (pageInsightsEl && pageInsightsEl.innerHTML && 
+                        !pageInsightsEl.textContent.includes('分析中') && 
+                        !pageInsightsEl.textContent.includes('Analyzing') &&
+                        !pageInsightsEl.textContent.includes('無法生成') &&
+                        !pageInsightsEl.textContent.includes('Unable to') &&
+                        !pageInsightsEl.textContent.includes('載入失敗') &&
+                        !pageInsightsEl.textContent.includes('Failed to')) {
+                        // 使用頁面上的內容（去除 HTML 標籤後重新格式化）
+                        aiContent = pageInsightsEl.innerHTML;
+                        console.log('使用頁面上已顯示的 AI 洞察內容');
+                    }
+                    
+                    if (aiContent) {
+                        // 直接使用頁面的內容
+                        pdfAiInsights.innerHTML = aiContent;
+                    } else {
+                        // 如果頁面沒有內容，則重新調用 API
+                        const m6 = data.open1 || '';
+                        const m7 = data.open2 || '';
+                        const m8 = data.open3 || '';
+                        
+                        const m678Data = {
+                            lang: currentLang,
+                            m1: String(m1),
+                            m2: String(m2),
+                            m3: String(m3),
+                            m4: String(m4),
+                            m5: String(m5),
+                            m6: m6,
+                            m7: m7,
+                            m8: m8
+                        };
+                        
+                        const aiResponse = await fetch('/Home/GenerateInsights', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify(m678Data)
+                        });
+                        
+                        if (aiResponse.ok) {
+                            const aiData = await aiResponse.json();
+                            if (aiData.insights) {
+                                pdfAiInsights.innerHTML = aiData.insights.replace(/\n/g, '<br>');
+                            } else {
+                                pdfAiInsights.textContent = currentLang === 'zh-TW' 
+                                    ? '無法生成 AI 洞察' 
+                                    : 'Unable to generate AI insights';
+                            }
+                        } else {
+                            pdfAiInsights.textContent = currentLang === 'zh-TW' 
+                                ? 'AI 洞察載入失敗' 
+                                : 'Failed to load AI insights';
+                        }
+                    }
+                } catch (error) {
+                    console.error('PDF AI 洞察載入錯誤:', error);
+                    if (pdfAiInsights) {
+                        pdfAiInsights.textContent = currentLang === 'zh-TW' 
+                            ? 'AI 洞察載入失敗' 
+                            : 'Failed to load AI insights';
+                    }
+                }
             }
 
             // 添加到 body（但隱藏）
@@ -1024,7 +1436,7 @@
                 btn.textContent = currentLang === 'zh-TW' ? '生成中...' : 'Generating...';
 
                 // 創建 PDF 專用內容
-                const pdfContainer = createPdfContent();
+                const pdfContainer = await createPdfContent();
                 if (!pdfContainer) {
                     throw new Error(currentLang === 'zh-TW' ? '無法讀取問卷資料' : 'Unable to read survey data');
                 }
@@ -1338,17 +1750,13 @@
                         const contentY = margin + 15; // 頁首下方
                         try {
                             pdf.addImage(pageImgData, 'PNG', margin, contentY, imgWidth, actualPageImgHeight, undefined, 'FAST');
-                            
-                            // 內容添加成功後，再添加頁首頁尾（確保有內容的頁面才有頁首頁尾）
-                            addHeaderFooter(pdf, actualPageNumber, estimatedPageCount, systemName);
+                            // 先不添加頁首頁尾，等所有頁面完成後統一添加，避免創建多餘頁面
                         } catch (pdfImgError) {
                             console.error('添加圖片到PDF失敗:', pdfImgError);
                             try {
                                 // 嘗試使用 SLOW 模式
                                 pdf.addImage(pageImgData, 'PNG', margin, contentY, imgWidth, actualPageImgHeight, undefined, 'SLOW');
-                                
-                                // 內容添加成功後，再添加頁首頁尾
-                                addHeaderFooter(pdf, actualPageNumber, estimatedPageCount, systemName);
+                                // 先不添加頁首頁尾，等所有頁面完成後統一添加
                             } catch (slowError) {
                                 console.error('使用 SLOW 模式也失敗:', slowError);
                                 throw new Error('無法將圖片添加到PDF: ' + slowError.message);
@@ -1389,14 +1797,55 @@
                 }
                 
                 // 使用實際頁數作為最終頁數
-                const finalTotalPages = totalPages;
+                let finalTotalPages = totalPages;
                 
-                // 更新所有頁面的頁碼（使用最終實際頁數）
+                // 確保不會有額外的頁面被創建
+                // 更新所有頁面的頁首頁尾（使用最終實際頁數）
                 if (finalTotalPages > 0) {
                     for (let pageNum = 1; pageNum <= finalTotalPages; pageNum++) {
+                        // 確保頁面存在才設置
+                        const currentTotalPages = pdf.internal.getNumberOfPages();
+                        if (pageNum > currentTotalPages) {
+                            console.warn(`頁面 ${pageNum} 不存在，停止更新`);
+                            finalTotalPages = currentTotalPages; // 更新最終頁數
+                            break;
+                        }
+                        
                         pdf.setPage(pageNum);
+                        
                         // 清除舊的頁首頁尾，重新添加（使用最終頁數）
                         addHeaderFooter(pdf, pageNum, finalTotalPages, systemName);
+                        
+                        // 每次更新後檢查是否創建了新頁
+                        const newTotalPages = pdf.internal.getNumberOfPages();
+                        if (newTotalPages > finalTotalPages) {
+                            console.warn(`更新頁面 ${pageNum} 後頁數增加 (${newTotalPages} > ${finalTotalPages})，立即刪除`);
+                            for (let extraPage = newTotalPages; extraPage > finalTotalPages; extraPage--) {
+                                try {
+                                    pdf.deletePage(extraPage);
+                                    console.log(`已刪除多餘頁面 ${extraPage}`);
+                                } catch (e) {
+                                    console.warn(`無法刪除多餘頁面 ${extraPage}:`, e);
+                                }
+                            }
+                            // 重新獲取實際頁數
+                            finalTotalPages = pdf.internal.getNumberOfPages();
+                        }
+                    }
+                    
+                    // 最後再次檢查並清理所有多餘頁面（以防萬一）
+                    finalTotalPages = pdf.internal.getNumberOfPages();
+                    if (finalTotalPages > actualPageNumber) {
+                        console.log(`最終檢查：發現多餘頁面 (${finalTotalPages} > ${actualPageNumber})，刪除`);
+                        for (let pageNum = finalTotalPages; pageNum > actualPageNumber; pageNum--) {
+                            try {
+                                pdf.deletePage(pageNum);
+                                console.log(`最終刪除頁面 ${pageNum}`);
+                            } catch (e) {
+                                console.warn(`無法刪除頁面 ${pageNum}:`, e);
+                            }
+                        }
+                        finalTotalPages = pdf.internal.getNumberOfPages();
                     }
                 }
 
@@ -1446,8 +1895,22 @@
         });
 
         // 頁面載入時更新報告（延遲確保所有元素都已渲染和 i18n 已初始化）
-        setTimeout(function() {
-            updateReport();
+        setTimeout(async function() {
+            try {
+                await updateReport();
+                getAIInsights();
+            } catch (error) {
+                console.error('頁面初始化錯誤:', error);
+                // 確保至少顯示引導頁面
+                const reportContent = document.getElementById('reportContent');
+                const noReportGuide = document.getElementById('noReportGuide');
+                if (reportContent) {
+                    reportContent.style.display = 'none';
+                }
+                if (noReportGuide) {
+                    noReportGuide.style.display = 'flex';
+                }
+            }
         }, 300);
     </script>
 }

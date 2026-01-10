@@ -1,11 +1,24 @@
 using System.Globalization;
 using Microsoft.AspNetCore.Localization;
 using Microsoft.Extensions.Options;
+using Microsoft.AspNetCore.Http;
 
 var builder = WebApplication.CreateBuilder(args);
 
 // Add services to the container.
 builder.Services.AddControllersWithViews();
+builder.Services.AddHttpClient();
+
+// 配置 Session（用於安全存儲問卷數據）
+builder.Services.AddDistributedMemoryCache();
+builder.Services.AddSession(options =>
+{
+    options.IdleTimeout = TimeSpan.FromMinutes(30); // Session 30 分鐘過期
+    options.Cookie.HttpOnly = true; // 防止 XSS 攻擊
+    options.Cookie.SecurePolicy = CookieSecurePolicy.SameAsRequest; // HTTPS 環境使用 Secure
+    options.Cookie.SameSite = SameSiteMode.Strict; // CSRF 防護
+    options.Cookie.Name = ".DocEngine.Session";
+});
 
 // 配置本地化服務
 builder.Services.AddLocalization(options => options.ResourcesPath = "Resources");
@@ -32,6 +45,9 @@ if (!app.Environment.IsDevelopment())
 
 app.UseHttpsRedirection();
 app.UseRouting();
+
+// 啟用 Session（必須在 UseRouting() 之後，UseEndpoints() 之前）
+app.UseSession();
 
 // 啟用本地化中間件
 var localizationOptions = app.Services.GetRequiredService<IOptions<RequestLocalizationOptions>>().Value;

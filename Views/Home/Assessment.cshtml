@@ -140,7 +140,7 @@
                             </div>
                             <div class="score-description" id="desc-M1">
                                 <span class="score-value-inline" id="value-M1">5</span>
-                                <span class="score-text">中等：新人需要1-2個月才能上手</span>
+                                <span class="score-text" data-i18n="Score.M1.5">中等：新人需要1-2個月才能上手</span>
                             </div>
                         </div>
                     </div>
@@ -159,7 +159,7 @@
                             </div>
                             <div class="score-description" id="desc-M2">
                                 <span class="score-value-inline" id="value-M2">5</span>
-                                <span class="score-text">中等：部分設計決策有依據，但不完整</span>
+                                <span class="score-text" data-i18n="Score.M2.5">中等：部分設計決策有依據，但不完整</span>
                             </div>
                         </div>
                     </div>
@@ -178,7 +178,7 @@
                             </div>
                             <div class="score-description" id="desc-M3">
                                 <span class="score-value-inline" id="value-M3">5</span>
-                                <span class="score-text">中等：能預測部分影響，但可能遺漏</span>
+                                <span class="score-text" data-i18n="Score.M3.5">中等：能預測部分影響，但可能遺漏</span>
                             </div>
                         </div>
                     </div>
@@ -197,7 +197,7 @@
                             </div>
                             <div class="score-description" id="desc-M4">
                                 <span class="score-value-inline" id="value-M4">5</span>
-                                <span class="score-text">中等：大部分理解一致，偶有歧義</span>
+                                <span class="score-text" data-i18n="Score.M4.5">中等：大部分理解一致，偶有歧義</span>
                             </div>
                         </div>
                     </div>
@@ -216,7 +216,7 @@
                             </div>
                             <div class="score-description" id="desc-M5">
                                 <span class="score-value-inline" id="value-M5">5</span>
-                                <span class="score-text">中等：需要2-3次會議才能對齊</span>
+                                <span class="score-text" data-i18n="Score.M5.5">中等：需要2-3次會議才能對齊</span>
                             </div>
                         </div>
                     </div>
@@ -534,7 +534,7 @@
         });
 
         // Save to localStorage on change
-        function saveToLocalStorage() {
+        async function saveToLocalStorage() {
             // 保存系統名稱
             const systemNameInput = document.getElementById('systemName');
             if (systemNameInput) {
@@ -563,11 +563,30 @@
             });
             localStorage.setItem('survey_data', JSON.stringify(data));
             localStorage.setItem('survey_timestamp', new Date().toISOString());
+            
+            // 同時保存到服務端 Session（更安全）
+            try {
+                const response = await fetch('/Home/SubmitSurvey', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify(data)
+                });
+                
+                if (!response.ok) {
+                    console.warn('無法保存到服務端 Session，將使用 localStorage');
+                } else {
+                    console.log('問卷數據已保存到服務端 Session');
+                }
+            } catch (error) {
+                console.warn('保存到服務端 Session 失敗，將使用 localStorage:', error);
+            }
         }
 
         async function goToPayment() {
-            // 先儲存問卷資料
-            saveToLocalStorage();
+            // 先儲存問卷資料（包含 Session）
+            await saveToLocalStorage();
             
             try {
                 // 從服務端獲取綠界表單資料
@@ -609,15 +628,21 @@
 
         // Auto-save on change
         sliders.forEach(slider => {
-            slider.addEventListener('input', saveToLocalStorage);
+            slider.addEventListener('input', function() {
+                saveToLocalStorage(); // 不需要 await，因為只是保存操作
+            });
         });
         textareas.forEach(textarea => {
-            textarea.addEventListener('input', saveToLocalStorage);
+            textarea.addEventListener('input', function() {
+                saveToLocalStorage(); // 不需要 await，因為只是保存操作
+            });
         });
 
         // Add event listener for system name input
         if (systemNameInput) {
-            systemNameInput.addEventListener('input', saveToLocalStorage);
+            systemNameInput.addEventListener('input', function() {
+                saveToLocalStorage(); // 不需要 await，因為只是保存操作
+            });
         }
     </script>
 }
