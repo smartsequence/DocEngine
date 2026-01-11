@@ -1,0 +1,15 @@
+C:\charleen\DocEngine\publish\DocEngine.exe
+C:\charleen\DocEngine\publish\appsettings.Development.json
+C:\charleen\DocEngine\publish\appsettings.json
+C:\charleen\DocEngine\publish\vercel.json
+C:\charleen\DocEngine\publish\DocEngine.dll
+C:\charleen\DocEngine\publish\DocEngine.deps.json
+C:\charleen\DocEngine\publish\DocEngine.runtimeconfig.json
+C:\charleen\DocEngine\publish\DocEngine.pdb
+C:\charleen\DocEngine\publish\en-US\DocEngine.resources.dll
+C:\charleen\DocEngine\publish\zh-TW\DocEngine.resources.dll
+C:\charleen\DocEngine\publish\MudBlazor.dll
+C:\charleen\DocEngine\publish\OpenAI.dll
+C:\charleen\DocEngine\publish\System.ClientModel.dll
+C:\charleen\DocEngine\publish\System.Memory.Data.dll
+C:\charleen\DocEngine\publish\System.Net.ServerSentEvents.dll
