@@ -1897,8 +1897,10 @@
         // 頁面載入時更新報告（延遲確保所有元素都已渲染和 i18n 已初始化）
         setTimeout(async function() {
             try {
+                // 1. 先更新問卷雷達圖等DOM
                 await updateReport();
-                getAIInsights();
+                // 2. 再執行AI分析（依賴DOM資料）
+                await getAIInsights();
             } catch (error) {
                 console.error('頁面初始化錯誤:', error);
                 // 確保至少顯示引導頁面

@@ -626,23 +626,24 @@
             }
         }
 
-        // Auto-save on change
+        let saveTimeout;
+        function debounceSave() {
+            clearTimeout(saveTimeout);
+            saveTimeout = setTimeout(async () => {
+                await saveToLocalStorage();
+            }, 300);
+        }
+
         sliders.forEach(slider => {
-            slider.addEventListener('input', function() {
-                saveToLocalStorage(); // 不需要 await，因為只是保存操作
-            });
-        });
-        textareas.forEach(textarea => {
-            textarea.addEventListener('input', function() {
-                saveToLocalStorage(); // 不需要 await，因為只是保存操作
-            });
+            slider.addEventListener('input', debounceSave);
         });
 
-        // Add event listener for system name input
+        textareas.forEach(textarea => {
+            textarea.addEventListener('input', debounceSave);
+        });
+
         if (systemNameInput) {
-            systemNameInput.addEventListener('input', function() {
-                saveToLocalStorage(); // 不需要 await，因為只是保存操作
-            });
+            systemNameInput.addEventListener('input', debounceSave);
         }
     </script>
 }
